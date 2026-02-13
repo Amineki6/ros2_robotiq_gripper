@@ -148,12 +148,16 @@ protected:
 
   double gripper_position_ = 0.0;
   double gripper_velocity_ = 0.0;
+  double gripper_current_ = 0.0;
   double gripper_position_command_ = 0.0;
+
+  double last_gripper_position_ = 0.0;
 
   std::atomic<uint8_t> write_command_;
   std::atomic<uint8_t> write_force_;
   std::atomic<uint8_t> write_speed_;
   std::atomic<uint8_t> gripper_current_state_;
+  std::atomic<uint8_t> gripper_current_raw_;
 
   double reactivate_gripper_cmd_ = 0.0;
   std::atomic<bool> reactivate_gripper_async_cmd_;

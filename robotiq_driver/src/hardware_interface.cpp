@@ -91,6 +91,9 @@ hardware_interface::CallbackReturn RobotiqGripperHardwareInterface::on_init(cons
                            kGripperMaxforce;
   gripper_position_ = std::numeric_limits<double>::quiet_NaN();
   gripper_velocity_ = std::numeric_limits<double>::quiet_NaN();
+  gripper_position_ = std::numeric_limits<double>::quiet_NaN();
+  gripper_velocity_ = std::numeric_limits<double>::quiet_NaN();
+  gripper_current_ = std::numeric_limits<double>::quiet_NaN();
   gripper_position_command_ = std::numeric_limits<double>::quiet_NaN();
   reactivate_gripper_cmd_ = NO_NEW_CMD_;
   reactivate_gripper_async_cmd_.store(false);
@@ -113,21 +116,22 @@ hardware_interface::CallbackReturn RobotiqGripperHardwareInterface::on_init(cons
   }
 
   // There are two state interfaces: position and velocity.
-  if (joint.state_interfaces.size() != 2)
+  if (joint.state_interfaces.size() != 2 && joint.state_interfaces.size() != 3)
   {
-    RCLCPP_FATAL(kLogger, "Joint '%s' has %zu state interface. 2 expected.", joint.name.c_str(),
+    RCLCPP_FATAL(kLogger, "Joint '%s' has %zu state interface. 2 or 3 expected.", joint.name.c_str(),
                  joint.state_interfaces.size());
     return CallbackReturn::ERROR;
   }
 
-  for (int i = 0; i < 2; ++i)
+  for (size_t i = 0; i < joint.state_interfaces.size(); ++i)
   {
     if (!(joint.state_interfaces[i].name == hardware_interface::HW_IF_POSITION ||
-          joint.state_interfaces[i].name == hardware_interface::HW_IF_VELOCITY))
+          joint.state_interfaces[i].name == hardware_interface::HW_IF_VELOCITY ||
+          joint.state_interfaces[i].name == hardware_interface::HW_IF_EFFORT))
     {
-      RCLCPP_FATAL(kLogger, "Joint '%s' has %s state interface. Expected %s or %s.", joint.name.c_str(),
+      RCLCPP_FATAL(kLogger, "Joint '%s' has %s state interface. Expected %s, %s or %s.", joint.name.c_str(),
                    joint.state_interfaces[i].name.c_str(), hardware_interface::HW_IF_POSITION,
-                   hardware_interface::HW_IF_VELOCITY);
+                   hardware_interface::HW_IF_VELOCITY, hardware_interface::HW_IF_EFFORT);
       return CallbackReturn::ERROR;
     }
   }
@@ -182,6 +186,8 @@ std::vector<hardware_interface::StateInterface> RobotiqGripperHardwareInterface:
       hardware_interface::StateInterface(info_.joints[0].name, hardware_interface::HW_IF_POSITION, &gripper_position_));
   state_interfaces.emplace_back(
       hardware_interface::StateInterface(info_.joints[0].name, hardware_interface::HW_IF_VELOCITY, &gripper_velocity_));
+  state_interfaces.emplace_back(
+      hardware_interface::StateInterface(info_.joints[0].name, hardware_interface::HW_IF_EFFORT, &gripper_current_));
 
   return state_interfaces;
 }
@@ -227,6 +233,7 @@ RobotiqGripperHardwareInterface::on_activate(const rclcpp_lifecycle::State& /*pr
     gripper_velocity_ = 0;
     gripper_position_command_ = 0;
   }
+  last_gripper_position_ = gripper_position_;
 
   // Activate the gripper.
   try
@@ -273,9 +280,21 @@ RobotiqGripperHardwareInterface::on_deactivate(const rclcpp_lifecycle::State& /*
 }
 
 hardware_interface::return_type RobotiqGripperHardwareInterface::read(const rclcpp::Time& /*time*/,
-                                                                      const rclcpp::Duration& /*period*/)
+                                                                      const rclcpp::Duration& period)
 {
   gripper_position_ = gripper_closed_pos_ * (gripper_current_state_.load() - kGripperMinPos) / kGripperRange;
+
+  // Calculate velocity
+  double dt = period.seconds();
+  if (dt > 0)
+  {
+    gripper_velocity_ = (gripper_position_ - last_gripper_position_) / dt;
+  }
+  last_gripper_position_ = gripper_position_;
+
+  // Update effort (current)
+  // Maps 0-255 to 0-MaxForce (approximate)
+  gripper_current_ = (gripper_current_raw_.load() / 255.0) * gripper_max_force_;
 
   if (!std::isnan(reactivate_gripper_cmd_))
   {
@@ -330,6 +349,7 @@ void RobotiqGripperHardwareInterface::background_task()
 
       // Read the state of the gripper.
       gripper_current_state_.store(this->driver_->get_gripper_position());
+      gripper_current_raw_.store(this->driver_->get_gripper_current());
     }
     catch (std::exception& e)
     {

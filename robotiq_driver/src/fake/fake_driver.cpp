@@ -75,6 +75,11 @@ uint8_t FakeDriver::get_gripper_position()
   return position_;
 }
 
+uint8_t FakeDriver::get_gripper_current()
+{
+  return 0;
+}
+
 bool FakeDriver::gripper_is_moving()
 {
   return gripper_is_moving_;
