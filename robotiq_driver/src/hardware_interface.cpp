@@ -48,7 +48,7 @@ constexpr double kGripperMaxSpeed = 0.150;  // mm/s
 constexpr double kGripperMaxforce = 235;    // N
 constexpr uint8_t kGripperRange = kGripperMaxPos - kGripperMinPos;
 
-constexpr auto kGripperCommsLoopPeriod = std::chrono::milliseconds{ 10 };
+constexpr auto kGripperCommsLoopPeriod = std::chrono::milliseconds{ 5 };
 
 namespace robotiq_driver
 {
@@ -328,6 +328,12 @@ hardware_interface::return_type RobotiqGripperHardwareInterface::write(const rcl
 
 void RobotiqGripperHardwareInterface::background_task()
 {
+  // Keep track of the last sent commands to avoid sending redundant writes.
+  uint8_t last_speed = 0xFF; // Initialize with invalid/force update values or read from driver if possible
+  uint8_t last_force = 0xFF;
+  uint8_t last_position = 0xFF;
+  bool first_run = true;
+
   while (communication_thread_is_running_.load())
   {
     try
@@ -340,15 +346,33 @@ void RobotiqGripperHardwareInterface::background_task()
         this->driver_->activate();
         reactivate_gripper_async_cmd_.store(false);
         reactivate_gripper_async_response_.store(true);
+        first_run = true; // Force update after reactivation
       }
 
-      // Write the latest command to the gripper.
-      this->driver_->set_gripper_position(write_command_.load());
-      this->driver_->set_speed(write_speed_.load());
-      this->driver_->set_force(write_force_.load());
+      // Write the latest command to the gripper only if it has changed.
+      uint8_t current_speed = write_speed_.load();
+      uint8_t current_force = write_force_.load();
+      uint8_t current_position = write_command_.load();
+
+      if (first_run || current_speed != last_speed || current_force != last_force ||
+          current_position != last_position)
+      {
+        this->driver_->set_speed(current_speed);
+        this->driver_->set_force(current_force);
+        this->driver_->set_gripper_position(current_position);
+
+        last_speed = current_speed;
+        last_force = current_force;
+        last_position = current_position;
+        first_run = false;
+      }
 
       // Read the state of the gripper.
+      // This implicitly calls update_status() in the driver, which reads the registers.
       gripper_current_state_.store(this->driver_->get_gripper_position());
+      
+      // get_gripper_current() returns the value cached by the previous get_gripper_position() call.
+      // It does NOT trigger a new serial transaction.
       gripper_current_raw_.store(this->driver_->get_gripper_current());
     }
     catch (std::exception& e)

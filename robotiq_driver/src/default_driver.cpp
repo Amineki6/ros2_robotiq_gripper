@@ -189,7 +189,6 @@ uint8_t DefaultDriver::get_gripper_position()
 
 uint8_t DefaultDriver::get_gripper_current()
 {
-  update_status();
   return gripper_current_;
 }
 
