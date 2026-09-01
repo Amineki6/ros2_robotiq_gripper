@@ -72,7 +72,7 @@ RobotiqGripperHardwareInterface::RobotiqGripperHardwareInterface(std::unique_ptr
 {
 }
 
-hardware_interface::CallbackReturn RobotiqGripperHardwareInterface::on_init(const hardware_interface::HardwareInfo& info)
+hardware_interface::CallbackReturn RobotiqGripperHardwareInterface::on_init(const hardware_interface::HardwareComponentInfo& info)
 {
   RCLCPP_DEBUG(kLogger, "on_init");
 
@@ -82,12 +82,12 @@ hardware_interface::CallbackReturn RobotiqGripperHardwareInterface::on_init(cons
   }
 
   // Read parameters.
-  gripper_closed_pos_ = stod(info_.hardware_parameters["gripper_closed_position"]);
+  gripper_closed_pos_ = stod(info_.hardware_parameters.at("gripper_closed_position"));
   gripper_max_speed_ = info_.hardware_parameters.count("gripper_max_speed") ?
-                           stod(info_.hardware_parameters["gripper_max_speed"]) :
+                           stod(info_.hardware_parameters.at("gripper_max_speed")) :
                            kGripperMaxSpeed;
   gripper_max_force_ = info_.hardware_parameters.count("gripper_max_force") ?
-                           stod(info_.hardware_parameters["gripper_max_force"]) :
+                           stod(info_.hardware_parameters.at("gripper_max_force")) :
                            kGripperMaxforce;
   gripper_position_ = std::numeric_limits<double>::quiet_NaN();
   gripper_velocity_ = std::numeric_limits<double>::quiet_NaN();
